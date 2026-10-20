@@ -224,8 +224,37 @@ rdays = defaultdict(lambda: [set() for _ in YEARS])
 rhits = defaultdict(lambda: [set() for _ in YEARS])
 last, rlast = {}, {}
 kept = rkept = 0
+from textgeo import TextGeo
+tgeo = TextGeo()
+tgeo.learn_common(t for t, _ in texts.values())
+BLAST2 = re.compile(r'вибух|взрыв|ракет|атак|удар|дрон|шахед|бпла|обстр|приліт|прилет|влуч|попад|уламк|обломк', re.I)
+tg_kept = 0
+
+
+def mark(g, y_i, dt, dmg, text, url):
+    days[g][y_i].add(dt)
+    if dmg:
+        hits[g][y_i].add(dt)
+    if dt >= last.get(g, ('',))[0]:
+        last[g] = (dt, text[:160], url)
+
+
 for y_i, g, dt, ids, dmg, precise, strike in cand:
     tx = [texts[i] for i in ids if i in texts]
+    # места, названные в самом заголовке («Бурштинська ТЕС» -> Бурштин) — главный путь
+    got = False
+    for t in tx:
+        lt = low(t[0])
+        if not ATTACK.search(lt) or UKR_INIT.search(lt) or (not strike and (not BLAST2.search(lt) or 'газ' in lt)):
+            continue
+        for pl in tgeo.find(t[0]):
+            pos.setdefault(pl[0], (pl[2], pl[3]))
+            aname.setdefault(pl[0], pl[1])
+            mark(pl[0], y_i, dt, dmg, t[0], t[1])
+            got = True
+    if got:
+        tg_kept += 1
+        continue
     if precise and ob_of.get(g) not in SKIP_OB:
         st = st_cache.get(g) or st_cache.setdefault(g, stems(g, aname[g]))
         ok = [t for t in tx if valid(t[0], g, st)]
@@ -268,5 +297,5 @@ out = {'years': YEARS, 'to': max(p[6][0] for p in pts), 'oblasts': oblasts, 'p':
        'source': 'VIINA, github.com/zhukovyuri/VIINA (Zhukov, University of Michigan)'}
 path = os.path.join(ROOT, 'data', 'strikes.json')
 json.dump(out, open(path, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
-print('candidates', len(cand), 'places', len(pts), f'(событий {kept})', 'raions', len(rts), f'(событий {rkept})',
+print('candidates', len(cand), 'places', len(pts), f'(по тексту {tg_kept}, по VIINA {kept})', 'raions', len(rts), f'(событий {rkept})',
       'to', out['to'], 'size', os.path.getsize(path))

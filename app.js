@@ -469,12 +469,18 @@ const gStr = L.layerGroup().addTo(map);
 S.years = new Set(); S.oblFilter = '';
 let radiusLayer = null;
 
-async function loadStrikes() { if (!S.st) S.st = await fetch('data/strikes.json', { cache: 'no-cache' }).then(r => r.json()); return S.st; }
+async function loadStrikes() {
+  if (!S.st) [S.st, S.fl] = await Promise.all(['data/strikes.json', 'data/flights.json']
+    .map(u => fetch(u, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null))));
+  return S.st;
+}
+S.kind = 'hits'; // hits — прилёты по новостям, flights — куда летело по мониторингу
+const DS = () => (S.kind === 'flights' && S.fl ? S.fl : S.st);
 const warYears = () => S.st.years;
 const yearOn = y => !S.years.size || S.years.has(y);
 function ptStats(p) { // по выбранным годам: дней с ударами, из них с разрушениями, последний год
   let n = 0, h = 0, last = null;
-  S.st.years.forEach((y, i) => { if (yearOn(y) && p[4][i]) { n += p[4][i]; h += p[5][i]; last = y; } });
+  S.st.years.forEach((y, i) => { if (yearOn(y) && p[4][i]) { n += p[4][i]; h += (S.kind === 'hits' ? p[5][i] : 0); last = y; } });
   return { n, h, last };
 }
 const yearsRow = arr => S.st.years.map((y, i) => `<span style="color:${arr[i] ? YEAR_COLOR[y] : 'var(--faint)'}">${y}: <b>${arr[i] || '—'}</b></span>`).join(' · ');
@@ -485,24 +491,30 @@ function strikePopup(p, isRaion) {
     <div>Из них с разрушениями или жертвами: ${p[5].reduce((a, b) => a + b, 0)}</div>
     <div class="muted" style="margin-top:6px">Последний: ${dateLabel(dt)}${tx ? ` — «${esc(tx)}»` : ''}${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener">источник</a>` : ''}</div>`;
 }
+function flightPopup(p) {
+  return `<h3>${esc(p[2])}</h3><div class="muted">${esc(S.fl.oblasts[p[3]] || '')} · по мониторинговым каналам</div>
+    <div style="margin:6px 0">Дней, когда сюда/мимо летело:<br>${yearsRow(p[4])}</div>
+    <div class="muted">ракеты: ${yearsRow(p[5])}<br>дроны: ${yearsRow(p[6])}<br>КАБы: ${yearsRow(p[7])}</div>`;
+}
 function drawStrikes() {
   gStr.clearLayers();
-  const items = [];
-  for (const p of S.st.p) {
-    if (S.oblFilter && S.st.oblasts[p[3]] !== S.oblFilter) continue;
+  const items = [], ds = DS(), fl = ds === S.fl;
+  for (const p of ds.p) {
+    if (S.oblFilter && ds.oblasts[p[3]] !== S.oblFilter) continue;
     const s = ptStats(p);
     if (s.n) items.push([p, s]);
   }
   items.sort((a, b) => (a[1].last - b[1].last) || (b[1].n - a[1].n)); // свежие и мелкие — сверху
   for (const [p, s] of items) {
     const col = YEAR_COLOR[s.last];
-    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n)), color: col, weight: 1,
-      opacity: 0.95, fillColor: col, fillOpacity: s.h ? 0.55 : 0.22 })
-      .bindTooltip(`<b>${esc(p[2])}</b> · ${esc(shortOb(S.st.oblasts[p[3]]))}<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
-      .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(strikePopup(p)).openOn(map); })
+    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n)), color: col, weight: fl ? 1.6 : 1,
+      opacity: 0.95, fillColor: col, fillOpacity: fl ? 0.12 : s.h ? 0.55 : 0.22 })
+      .bindTooltip(`<b>${esc(p[2])}</b> · ${esc(shortOb(ds.oblasts[p[3]]))}<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
+      .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(fl ? flightPopup(p) : strikePopup(p)).openOn(map); })
       .addTo(gStr);
   }
   S.stItems = items;
+  if (fl) return;
   // удары, где новости назвали только район: пунктирный круг в центре района
   for (const p of S.st.r || []) {
     if (S.oblFilter && S.st.oblasts[p[3]] !== S.oblFilter) continue;
@@ -534,6 +546,8 @@ function radiusCheck(ll, label) {
   for (const p of S.st.p) { const d = km(ll.lat, ll.lng, p[0], p[1]); if (d <= 25) near.push([d, p]); }
   near.sort((a, b) => a[0] - b[0]);
   const sum = r => S.st.years.map((y, i) => near.filter(([d]) => d <= r).reduce((t, [, p]) => t + p[4][i], 0));
+  const fnear = S.fl ? S.fl.p.map(p => [km(ll.lat, ll.lng, p[0], p[1]), p]).filter(([d]) => d <= 25) : [];
+  const fsum = r => S.st.years.map((y, i) => fnear.filter(([d]) => d <= r).reduce((t, [, p]) => t + p[4][i], 0));
   radiusLayer = L.layerGroup([
     L.circle(ll, { radius: 10000, color: '#fff', weight: 1.2, dashArray: '4 4', fill: false, interactive: false }),
     L.circle(ll, { radius: 25000, color: '#8b95a4', weight: 1, dashArray: '2 6', fill: false, interactive: false }),
@@ -542,8 +556,10 @@ function radiusCheck(ll, label) {
   const rlist = rnear.map(([d, p]) => `<li>${esc(p[2])} (центр в ${d.toFixed(0)} км): ${yearsRow(p[4])}</li>`).join('');
   const list = near.slice(0, 6).map(([d, p]) => `<li>${esc(p[2])} — ${d < 1 ? '<1' : d.toFixed(0)} км, последний удар ${dateLabel(p[6][0])}</li>`).join('');
   L.popup({ maxWidth: 360 }).setLatLng(ll).setContent(`<h3>${esc(label || `${ll.lat.toFixed(3)}, ${ll.lng.toFixed(3)}`)}</h3>
-    <div style="margin:4px 0">Дней с ударами в радиусе <b>10 км</b>:<br>${yearsRow(sum(10))}</div>
-    <div style="margin:4px 0">в радиусе <b>25 км</b>:<br>${yearsRow(sum(25))}</div>
+    <div style="margin:4px 0"><b>Прилёты</b> (новости), дней — в радиусе 10 км:<br>${yearsRow(sum(10))}</div>
+    <div style="margin:4px 0">в радиусе 25 км:<br>${yearsRow(sum(25))}</div>
+    ${S.fl ? `<div style="margin:6px 0 4px"><b>Куда летело</b> (мониторинг), дней — в радиусе 10 км:<br>${yearsRow(fsum(10))}</div>
+    <div style="margin:4px 0">в радиусе 25 км:<br>${yearsRow(fsum(25))}</div>` : ''}
     ${near.length ? `<div class="muted">Ближайшие места с ударами:</div><ol>${list}</ol>` : '<div>В радиусе 25 км точных мест с ударами в базе нет.</div>'}
     ${rnear.length ? `<div class="muted" style="margin-top:4px">Удары в районе без точного места:</div><ul style="margin:4px 0;padding-left:18px">${rlist}</ul>` : ''}`).openOn(map);
 }
@@ -580,7 +596,7 @@ function setYears(ys) {
   drawStrikes(); renderWar();
 }
 function renderWar() {
-  const st = S.st, yrs = st.years, items = S.stItems || [];
+  const st = DS(), yrs = st.years, items = S.stItems || [];
   const days = items.reduce((t, [, s]) => t + s.n, 0);
   const latestY = [...yrs].reverse().find(yearOn);
   const iL = yrs.indexOf(latestY);
@@ -590,8 +606,12 @@ function renderWar() {
   const maxN = top.length ? top[0][1].n : 1;
   const prev = $('#find-q')?.value || '';
   $('#detail').innerHTML = `
-    <h2>Прилёты по городам и сёлам</h2>
-    <div class="muted" style="font-size:12px">с 24 фев 2022 по ${dateLabel(st.to)} · по новостям, база VIINA</div>
+    <h2>${S.kind === 'flights' ? 'Куда летело' : 'Прилёты по городам и сёлам'}</h2>
+    <div class="muted" style="font-size:12px">с 24 фев 2022 по ${dateLabel(st.to)} · ${S.kind === 'flights' ? 'по мониторинговым каналам' : 'по новостям, база VIINA'}</div>
+    <div class="tabs kinds" style="margin-top:10px">
+      <button data-k="hits" class="${S.kind === 'hits' ? 'on' : ''}">Прилёты</button>
+      <button data-k="flights" class="${S.kind === 'flights' ? 'on' : ''}" ${S.fl ? '' : 'disabled'}>Куда летело</button>
+    </div>
     <div class="years" role="group" aria-label="Годы">
       <button data-y="all" class="${S.years.size ? '' : 'on'}">Все годы</button>
       ${yrs.map(y => `<button data-y="${y}" class="${S.years.has(y) ? 'on' : ''}" style="${S.years.has(y) ? '' : `border-color:${YEAR_COLOR[y]}55`}">${y}</button>`).join('')}
@@ -600,19 +620,27 @@ function renderWar() {
     <div id="find-res"></div>
     <p class="note" style="margin:6px 0 0">Клик по любому месту на карте — сколько дней с ударами было в радиусе 10 и 25 км, по годам.</p>
     <div class="kpis">
-      <div class="kpi"><b>${fmtInt(items.length)}</b><span>мест с ударами · ${range}</span></div>
-      <div class="kpi"><b>${fmtInt(days)}</b><span>дней с ударами, сумма по местам</span></div>
-      <div class="kpi"><b>${fmtInt(inLatest)}</b><span>мест с ударами в ${latestY}</span></div>
+      <div class="kpi"><b>${fmtInt(items.length)}</b><span>мест · ${range}</span></div>
+      <div class="kpi"><b>${fmtInt(days)}</b><span>${S.kind === 'flights' ? 'дней «летело», сумма по местам' : 'дней с ударами, сумма по местам'}</span></div>
+      <div class="kpi"><b>${fmtInt(inLatest)}</b><span>мест в ${latestY}</span></div>
     </div>
     <select id="obl-filter" class="sel"><option value="">Все области</option>${st.oblasts.map(o => `<option ${o === S.oblFilter ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
     <h2 class="sec">Чаще всего · ${range}${S.oblFilter ? ' · ' + esc(shortOb(S.oblFilter)) : ''}</h2>
     <ol class="rank" id="rank">${top.map(([p, s], i) => `<li data-i="${st.p.indexOf(p)}"><span class="rk">${i + 1}</span><span class="nm"><span class="dot" style="background:${YEAR_COLOR[s.last]};margin-right:6px"></span>${esc(p[2])}</span><span class="bar"><i style="width:${(s.n / maxN) * 100}%;background:${YEAR_COLOR[s.last]}"></i></span><span class="v">${fmtInt(s.n)} дн</span></li>`).join('') || '<li>нет</li>'}</ol>
+    ${S.kind === 'flights' ? `<p class="note">Точка — населённый пункт, который мониторинговые каналы (Повітряні сили, Монітор,
+      war_monitor, Николаевский Ванёк) называли в сообщениях о ракетах, дронах и КАБах: «ракета на Бурштин», «БпЛА повз Калуш».
+      Это «куда/мимо летело», а не обязательно попадание. Цвет — последний год, размер — сколько дней. Подробный мониторинг
+      по западу у каналов идёт в основном с 2024 года, за 2022–2023 упоминаний меньше.</p>` : ''}
     <p class="note">Точка — населённый пункт, где по новостям был удар: ракета, дрон, авиабомба или артиллерия. Цвет — последний год
       с ударом (из выбранных), размер — сколько дней с ударами, заливка гуще — были разрушения или жертвы.
       Источник — <a href="https://github.com/zhukovyuri/VIINA" target="_blank" rel="noopener">VIINA</a> (Мичиганский университет):
       заголовки украинских СМИ, привязанные к месту. Каждый заголовок проверен: в нём есть название места и слово про удар,
       нет другой области; для сёл — названа своя область. Чего не было в новостях, здесь нет: мелкие сёла с одним дроном
       могут не попасть, а крупные города попадают почти каждый день.</p>`;
+  document.querySelector('.kinds').addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]'); if (!b || b.disabled || b.dataset.k === S.kind) return;
+    S.kind = b.dataset.k; drawStrikes(); renderWar();
+  });
   document.querySelector('.years').addEventListener('click', e => {
     const b = e.target.closest('button[data-y]'); if (!b) return;
     if (b.dataset.y === 'all') return setYears([]);
@@ -628,7 +656,7 @@ function renderWar() {
     const li = e.target.closest('li[data-i]'); if (!li) return;
     const p = st.p[+li.dataset.i];
     map.setView([p[0], p[1]], Math.max(map.getZoom(), 9));
-    L.popup({ maxWidth: 340 }).setLatLng([p[0], p[1]]).setContent(strikePopup(p)).openOn(map);
+    L.popup({ maxWidth: 340 }).setLatLng([p[0], p[1]]).setContent(S.kind === 'flights' ? flightPopup(p) : strikePopup(p)).openOn(map);
   });
 }
 

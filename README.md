@@ -13,7 +13,8 @@ https://qwert11.github.io/map-alert/
 
 | Слой | Источник |
 |---|---|
-| Прилёты по населённым пунктам с 2022 | [VIINA](https://github.com/zhukovyuri/VIINA) — заголовки СМИ, привязанные к месту; каждый проверен на название места, слово про удар и область (`scripts/build_strikes.py`) |
+| Прилёты по населённым пунктам с 2022 | [VIINA](https://github.com/zhukovyuri/VIINA) — заголовки СМИ; место берётся из текста заголовка (`scripts/textgeo.py`: падежи, «Бурштинська ТЕС» → Бурштин, тёзки по области), `scripts/build_strikes.py` |
+| Куда летело с 2022 | вся история @kpszsu, @monitorwarr, @war_monitor, @vanek_nikolaev («ракета на Бурштин») → места через `textgeo.py`, `scripts/build_flights.py` |
 | Тревоги по областям в ночи атак | архив eTryvoga, [датасет Vadimkin](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset), сверенный с официальным |
 | Траектории | посты [@kpszsu](https://t.me/s/kpszsu), [@monitorwarr](https://t.me/s/monitorwarr), [@war_monitor](https://t.me/s/war_monitor), [@vanek_nikolaev](https://t.me/s/vanek_nikolaev) |
 | Сколько запущено/сбито | утренние сводки Повітряних сил |
@@ -39,6 +40,9 @@ Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
    тревоги дольше 6 ч сверяются с официальным архивом)
 5. `scripts/build_site.py` — геокодирование по GeoNames, чистка → `data/nights/D.json`, `data/index.json`
 6. `scripts/build_strikes.py` — прилёты за всю войну из VIINA → `data/strikes.json`
+7. `scripts/build_flights.py` — «куда летело» из истории каналов → `data/flights.json`.
+   Историю с 2022 один раз качает `scripts/collect_range.py <канал> <с id> <до id> <файл>` (несколько процессов
+   параллельно, `_tmp/hist/`), дальше хватает свежих постов из шага 1
 
 Границы областей — geoBoundaries ADM1 (`scripts/build_geo.py` → `data/oblasts.geojson`).
 Перезапустить извлечение одной ночи: удалить `data/extract/D.json` и запустить шаг 3 с этой датой.

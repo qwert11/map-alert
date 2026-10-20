@@ -111,6 +111,7 @@ button.link { background: none; border: 0; color: #8cc8ff; cursor: pointer; padd
 .lbl-off .olbl { display: none; }
 .scale { display: inline-block; width: 70px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,69,58,.12), rgba(255,69,58,.85)); }
 body[data-mode="war"] #nights-wrap, body[data-mode="war"] #layers { display: none; }
+.tabs.kinds button[disabled] { opacity: .4; cursor: default; }
 .find { display: flex; gap: 6px; margin: 10px 0 0; }
 .find input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 7px 10px; font: inherit; }
 .find input:focus { outline: none; border-color: var(--accent); }
