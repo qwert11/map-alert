@@ -132,7 +132,8 @@ def counts(n):
             v = amount(x)
             if k and v:
                 c[k] += v
-                c['est'] = c.get('est') or not isinstance(x.get('count'), int)
+                if not isinstance(x.get('count'), int):
+                    c['est_' + k[0]] = True  # est_m / est_d: число — оценка по мониторам
         c['downed'] = sum(amount(x) or 0 for x in af.get('downed') or [])
         c['from_af'] = True
     else:

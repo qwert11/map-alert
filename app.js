@@ -300,7 +300,7 @@ function renderNightList() {
       <div class="n-date"><b>${nightLabel(n.night).split(' ')[0]}</b><span>${nightLabel(n.night).split(' ')[1]}, ${nightWd(n.night)}</span></div>
       <div class="n-head">${esc(n.headline || 'без происшествий')}</div>
       <div class="n-meta"><span class="pips" title="интенсивность">${pips}</span>
-        ${c.missiles ? `<span class="chip"><span class="dot" style="background:${COLOR('cruise')}"></span>${c.est ? '≈' : ''}${c.missiles} ${plural(c.missiles, 'ракета', 'ракеты', 'ракет')}</span>` : ''}
+        ${c.missiles ? `<span class="chip"><span class="dot" style="background:${COLOR('cruise')}"></span>${c.est_m ? '≈' : ''}${c.missiles} ${plural(c.missiles, 'ракета', 'ракеты', 'ракет')}</span>` : ''}
         ${c.drones ? `<span class="chip"><span class="dot" style="background:${COLOR('shahed')}"></span>${c.drones} дронов</span>` : ''}
         ${n.nImpacts ? `<span class="chip"><span class="dot" style="background:#fff"></span>${n.nImpacts} ${plural(n.nImpacts, 'прилёт', 'прилёта', 'прилётов')}</span>` : ''}
       </div></li>`;
@@ -337,8 +337,8 @@ function renderNightDetail() {
     <div class="muted" style="font-size:12px">с 12:00 ${nightLabel(new Date((dayNum(S.night) - 1) * 864e5).toISOString())} до 12:00 ${nightLabel(S.night)} по Киеву</div>
     <p class="lead">${esc(d.summary || d.headline || '')}</p>
     <div class="kpis">
-      <div class="kpi"><b>${c.est && c.missiles ? '≈' : ''}${c.missiles || 0}</b><span>ракет${c.from_af ? '' : ' (по трекам)'}</span></div>
-      <div class="kpi"><b>${c.drones || 0}</b><span>дронов${c.from_af ? '' : ' (по трекам)'}</span></div>
+      <div class="kpi"><b>${c.est_m && c.missiles ? '≈' : ''}${c.missiles || 0}</b><span>ракет${c.from_af ? '' : ' (по трекам)'}</span></div>
+      <div class="kpi"><b>${c.est_d && c.drones ? '≈' : ''}${c.drones || 0}</b><span>дронов${c.from_af ? '' : ' (по трекам)'}</span></div>
       <div class="kpi"><b>${alertMin.length}</b><span>${plural(alertMin.length, 'область', 'области', 'областей')} с тревогой</span></div>
     </div>
     ${afTable(d.af)}
