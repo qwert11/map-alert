@@ -392,9 +392,10 @@ function renderOverview() {
 
 function renderLegend() {
   if (S.mode === 'war') {
-    $('#legend').innerHTML = $('#legend-m').innerHTML = `<span class="lg">меньше <span class="scale"></span> больше часов тревоги</span>
-      <span class="lg"><span class="dot" style="background:#7a4b63;border:1px dashed #aaa;width:10px;height:10px"></span>постоянная тревога</span>
-      <span class="lg muted">клик по области — её графики</span>`;
+    $('#legend').innerHTML = $('#legend-m').innerHTML = `<span class="lg muted">последний удар:</span>
+      ${S.st.years.map(y => `<span class="lg"><span class="dot" style="background:${YEAR_COLOR[y]};width:10px;height:10px"></span>${y}</span>`).join('')}
+      <span class="lg"><span class="dot" style="border:1.5px dashed #aaa;width:11px;height:11px"></span>район без точного места</span>
+      <span class="lg muted">размер — дней с ударами · клик по карте — проверка радиуса</span>`;
     return;
   }
   const present = new Set();
@@ -458,121 +459,177 @@ document.querySelectorAll('.tl-speed button').forEach(b => b.addEventListener('c
 }));
 
 
-// ---------- вся война: тревоги с 2022 по годам ----------
+// ---------- прилёты за всю войну по населённым пунктам ----------
 const fmtInt = n => Math.round(n).toLocaleString('ru-RU');
-const shortOb = n => n.replace(' область', '').replace('Автономна Республіка ', '');
-const monthLabel = m => `${MON[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
+const shortOb = n => (n || '').replace(' область', '').replace('Автономна Республіка ', '');
 const dateLabel = t => (t ? `${+t.slice(8, 10)} ${MON[+t.slice(5, 7) - 1]} ${t.slice(0, 4)}` : '');
-// точки подписей там, где центр полигона неудачен (Киевщина вокруг Киева, изогнутая Одесщина)
-const LABEL_AT = { 'Київська область': [50.95, 29.95], 'Київ': [50.45, 30.52], 'Одеська область': [46.75, 30.25] };
-const PERM_SINCE = { 'Луганська область': '4 апреля 2022', 'Автономна Республіка Крим': '11 декабря 2022', 'Севастополь': '11 декабря 2022' };
-S.years = new Set(); S.warRegion = null;
+// цвет — последний год, когда в место прилетало: чем свежее, тем горячее
+const YEAR_COLOR = { 2022: '#7c8798', 2023: '#38bdf8', 2024: '#facc15', 2025: '#fb923c', 2026: '#ff453a' };
+const gStr = L.layerGroup().addTo(map);
+S.years = new Set(); S.oblFilter = '';
+let radiusLayer = null;
 
-async function loadHist() { if (!S.hist) S.hist = await fetch('data/history.json', { cache: 'no-cache' }).then(r => r.json()); return S.hist; }
-const warYears = () => [...new Set(S.hist.months.map(m => m.slice(0, 4)))];
+async function loadStrikes() { if (!S.st) S.st = await fetch('data/strikes.json', { cache: 'no-cache' }).then(r => r.json()); return S.st; }
+const warYears = () => S.st.years;
 const yearOn = y => !S.years.size || S.years.has(y);
-function warAgg() {
-  const H = S.hist, res = {};
-  for (const [reg, R] of Object.entries(H.regions)) {
-    let min = 0, cnt = 0, mx = [0, null];
-    R.m.forEach(([c, v], i) => { if (yearOn(H.months[i].slice(0, 4))) { min += v; cnt += c; } });
-    for (const [y, d] of Object.entries(R.y)) if (yearOn(y) && d.max[0] > mx[0]) mx = d.max;
-    res[reg] = { min, cnt, max: mx };
-  }
-  return res;
+function ptStats(p) { // по выбранным годам: дней с ударами, из них с разрушениями, последний год
+  let n = 0, h = 0, last = null;
+  S.st.years.forEach((y, i) => { if (yearOn(y) && p[4][i]) { n += p[4][i]; h += p[5][i]; last = y; } });
+  return { n, h, last };
 }
-function warSpanDays() { // сколько суток в выбранных годах покрывает архив
-  const H = S.hist, a0 = Date.parse(H.from + 'T00:00Z'), b0 = Date.parse(H.to.slice(0, 10) + 'T00:00Z') + 864e5;
-  let d = 0;
-  for (const y of warYears()) if (yearOn(y)) d += Math.max(0, Math.min(b0, Date.UTC(+y + 1, 0, 1)) - Math.max(a0, Date.UTC(+y, 0, 1))) / 864e5;
-  return d;
+const yearsRow = arr => S.st.years.map((y, i) => `<span style="color:${arr[i] ? YEAR_COLOR[y] : 'var(--faint)'}">${y}: <b>${arr[i] || '—'}</b></span>`).join(' · ');
+function strikePopup(p, isRaion) {
+  const [dt, tx, url] = p[6];
+  return `<h3>${esc(p[2])}</h3><div class="muted">${esc(S.st.oblasts[p[3]] || '')}${isRaion ? ' · удары в районе без точного места' : ''}</div>
+    <div style="margin:6px 0">Дней с ударами по годам:<br>${yearsRow(p[4])}</div>
+    <div>Из них с разрушениями или жертвами: ${p[5].reduce((a, b) => a + b, 0)}</div>
+    <div class="muted" style="margin-top:6px">Последний: ${dateLabel(dt)}${tx ? ` — «${esc(tx)}»` : ''}${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener">источник</a>` : ''}</div>`;
+}
+function drawStrikes() {
+  gStr.clearLayers();
+  const items = [];
+  for (const p of S.st.p) {
+    if (S.oblFilter && S.st.oblasts[p[3]] !== S.oblFilter) continue;
+    const s = ptStats(p);
+    if (s.n) items.push([p, s]);
+  }
+  items.sort((a, b) => (a[1].last - b[1].last) || (b[1].n - a[1].n)); // свежие и мелкие — сверху
+  for (const [p, s] of items) {
+    const col = YEAR_COLOR[s.last];
+    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n)), color: col, weight: 1,
+      opacity: 0.95, fillColor: col, fillOpacity: s.h ? 0.55 : 0.22 })
+      .bindTooltip(`<b>${esc(p[2])}</b> · ${esc(shortOb(S.st.oblasts[p[3]]))}<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
+      .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(strikePopup(p)).openOn(map); })
+      .addTo(gStr);
+  }
+  S.stItems = items;
+  // удары, где новости назвали только район: пунктирный круг в центре района
+  for (const p of S.st.r || []) {
+    if (S.oblFilter && S.st.oblasts[p[3]] !== S.oblFilter) continue;
+    const s = ptStats(p);
+    if (!s.n) continue;
+    const col = YEAR_COLOR[s.last];
+    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(26, 9 + 2 * Math.sqrt(s.n)), color: col, weight: 1.5,
+      dashArray: '3 4', fillColor: col, fillOpacity: 0.05 })
+      .bindTooltip(`<b>${esc(p[2])}</b> · удары без точного места<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
+      .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(strikePopup(p, true)).openOn(map); })
+      .addTo(gStr);
+  }
 }
 function styleWar() {
-  const A = S.warAgg = warAgg(), max = Math.max(1, ...Object.values(A).map(a => a.min));
   gLbl.clearLayers();
-  oblLayer.eachLayer(l => {
-    const nm = l.feature.properties.name, a = A[nm], sel = S.warRegion === nm;
-    const edge = { color: sel ? '#fff' : '#56606e', weight: sel ? 2.2 : 0.8, opacity: sel ? 1 : 0.7 };
-    if (PERMANENT.has(nm)) { l.setStyle({ ...edge, fillColor: '#7a4b63', fillOpacity: 0.5, dashArray: '3 3' }); return; }
-    l.setStyle({ ...edge, dashArray: null, fillColor: COLOR('alert'), fillOpacity: a ? 0.06 + 0.74 * (a.min / max) : 0 });
-    if (a && a.min) gLbl.addLayer(L.marker(LABEL_AT[nm] || l.getCenter(), { pane: 'lbl', interactive: false,
-      icon: L.divIcon({ className: 'olbl', iconSize: null, html: `<span>${fmtInt(a.min / 60)}</span>` }) }));
-  });
+  oblLayer.eachLayer(l => l.setStyle({ fillOpacity: 0, color: '#56606e', weight: 0.8, opacity: 0.7, dashArray: null }));
+  drawStrikes();
 }
 function warTooltip(nm) {
-  if (PERMANENT.has(nm)) return `<b>${esc(nm)}</b><br>постоянная тревога с ${PERM_SINCE[nm]}<br><span class="muted">в архиве не учитывается</span>`;
-  const a = (S.warAgg || {})[nm];
-  if (!a || !a.min) return `<b>${esc(nm)}</b><br><span class="muted">тревог нет</span>`;
-  const share = a.min / (warSpanDays() * 1440) * 100;
-  return `<b>${esc(nm)}</b><br>${fmtInt(a.min / 60)} ч под тревогой (${fmtInt(a.min / 1440)} сут) — ${share.toFixed(1)}% времени
-    <br>${fmtInt(a.cnt)} ${plural(a.cnt, 'тревога', 'тревоги', 'тревог')}${a.max[0] ? `<br><span class="muted">самая долгая — ${fmtDur(a.max[0])}, ${dateLabel(a.max[1])}</span>` : ''}`;
+  const k = (S.stItems || []).filter(([p]) => S.st.oblasts[p[3]] === nm).length;
+  return `<b>${esc(nm)}</b><br><span class="muted">${k ? `${k} ${plural(k, 'место', 'места', 'мест')} с ударами` : 'ударов в базе нет'}</span>`;
 }
+
+// проверка места: сколько ударов было в радиусе 10 и 25 км
+const km = (a, b, c, d) => { const t = Math.PI / 180, x = Math.sin((c - a) * t / 2) ** 2 + Math.cos(a * t) * Math.cos(c * t) * Math.sin((d - b) * t / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
+function radiusCheck(ll, label) {
+  if (radiusLayer) map.removeLayer(radiusLayer);
+  const near = [];
+  for (const p of S.st.p) { const d = km(ll.lat, ll.lng, p[0], p[1]); if (d <= 25) near.push([d, p]); }
+  near.sort((a, b) => a[0] - b[0]);
+  const sum = r => S.st.years.map((y, i) => near.filter(([d]) => d <= r).reduce((t, [, p]) => t + p[4][i], 0));
+  radiusLayer = L.layerGroup([
+    L.circle(ll, { radius: 10000, color: '#fff', weight: 1.2, dashArray: '4 4', fill: false, interactive: false }),
+    L.circle(ll, { radius: 25000, color: '#8b95a4', weight: 1, dashArray: '2 6', fill: false, interactive: false }),
+  ]).addTo(map);
+  const rnear = (S.st.r || []).map(p => [km(ll.lat, ll.lng, p[0], p[1]), p]).filter(([d]) => d <= 35).sort((a, b) => a[0] - b[0]);
+  const rlist = rnear.map(([d, p]) => `<li>${esc(p[2])} (центр в ${d.toFixed(0)} км): ${yearsRow(p[4])}</li>`).join('');
+  const list = near.slice(0, 6).map(([d, p]) => `<li>${esc(p[2])} — ${d < 1 ? '<1' : d.toFixed(0)} км, последний удар ${dateLabel(p[6][0])}</li>`).join('');
+  L.popup({ maxWidth: 360 }).setLatLng(ll).setContent(`<h3>${esc(label || `${ll.lat.toFixed(3)}, ${ll.lng.toFixed(3)}`)}</h3>
+    <div style="margin:4px 0">Дней с ударами в радиусе <b>10 км</b>:<br>${yearsRow(sum(10))}</div>
+    <div style="margin:4px 0">в радиусе <b>25 км</b>:<br>${yearsRow(sum(25))}</div>
+    ${near.length ? `<div class="muted">Ближайшие места с ударами:</div><ol>${list}</ol>` : '<div>В радиусе 25 км точных мест с ударами в базе нет.</div>'}
+    ${rnear.length ? `<div class="muted" style="margin-top:4px">Удары в районе без точного места:</div><ul style="margin:4px 0;padding-left:18px">${rlist}</ul>` : ''}`).openOn(map);
+}
+map.on('click', e => { if (S.mode === 'war' && S.st) radiusCheck(e.latlng); });
+
+async function findPlace(q) {
+  const box = $('#find-res');
+  q = q.trim(); if (!q) { box.innerHTML = ''; return; }
+  const lq = q.toLowerCase();
+  const local = S.st.p.filter(p => p[2].toLowerCase().startsWith(lq)).slice(0, 5)
+    .map(p => ({ lat: p[0], lon: p[1], name: p[2], sub: shortOb(S.st.oblasts[p[3]]) }));
+  box.innerHTML = '<p class="muted">Ищу…</p>';
+  let osm = [];
+  try {
+    const u = `https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=ua&accept-language=uk&q=${encodeURIComponent(q)}`;
+    osm = (await fetch(u).then(r => r.json())).map(r => ({ lat: +r.lat, lon: +r.lon, name: r.display_name.split(',')[0], sub: r.display_name.split(',').slice(1, 3).join(',') }));
+  } catch (e) { /* OSM недоступен — останутся только места из базы */ }
+  const seen = new Set(), res = [];
+  for (const r of local.concat(osm)) { const k = r.name + Math.round(r.lat * 20) + Math.round(r.lon * 20); if (!seen.has(k)) { seen.add(k); res.push(r); } }
+  box.innerHTML = res.length ? `<ul class="items">${res.map((r, i) => `<li data-i="${i}"><span class="dot" style="background:var(--muted)"></span><div>${esc(r.name)}<small>${esc(r.sub)}</small></div></li>`).join('')}</ul>`
+    : '<p class="muted">Ничего не нашёл.</p>';
+  box.querySelector('ul')?.addEventListener('click', e => {
+    const li = e.target.closest('li[data-i]'); if (!li) return;
+    const r = res[+li.dataset.i], ll = L.latLng(r.lat, r.lon);
+    map.setView(ll, 10); radiusCheck(ll, r.name);
+  });
+}
+
 function setYears(ys) {
   const all = warYears();
   S.years = new Set(ys.filter(y => all.includes(y)));
   if (S.years.size === all.length) S.years.clear();
   history.replaceState(null, '', '#war' + (S.years.size ? '=' + [...S.years].sort().join(',') : ''));
-  styleWar(); renderWar();
-}
-function selectWarRegion(nm) {
-  S.warRegion = S.warRegion === nm || !nm ? null : nm;
-  styleWar(); renderWar();
+  drawStrikes(); renderWar();
 }
 function renderWar() {
-  const H = S.hist, A = S.warAgg || warAgg(), yrs = warYears(), reg = S.warRegion;
-  const rows = Object.entries(A).filter(([n, a]) => !PERMANENT.has(n) && a.min).sort((a, b) => b[1].min - a[1].min);
-  const totMin = rows.reduce((t, [, a]) => t + a.min, 0), totCnt = rows.reduce((t, [, a]) => t + a.cnt, 0);
-  const longest = rows.reduce((m, [n, a]) => (a.max[0] > m[1] ? [n, a.max[0], a.max[1]] : m), [null, 0, null]);
-  const series = H.months.map((m, i) => (reg ? H.regions[reg]?.m[i]?.[1] || 0 : Object.values(H.regions).reduce((t, R) => t + R.m[i][1], 0)));
-  const smax = Math.max(1, ...series);
-  const bars = series.map((v, i) => {
-    const m = H.months[i], y = m.slice(0, 4);
-    return `<div data-y="${y}" class="${yearOn(y) ? '' : 'off'}" title="${monthLabel(m)}: ${fmtInt(v / 60)} ч"><i style="height:${(v / smax) * 100}%"></i></div>`;
-  }).join('');
-  const ticks = yrs.map(y => `<span style="left:${(H.months.findIndex(m => m.startsWith(y)) / H.months.length) * 100}%">${y}</span>`).join('');
-  const hours = Array(24).fill(0);
-  for (const [n, R] of Object.entries(H.regions)) if (!reg || n === reg) for (const [y, d] of Object.entries(R.y)) if (yearOn(y)) d.h.forEach((v, i) => (hours[i] += v));
-  const hmax = Math.max(1, ...hours), hsum = hours.reduce((a, b) => a + b, 0) || 1;
-  const hbars = hours.map((v, i) => `<div title="${String(i).padStart(2, '0')}:00–${String(i + 1).padStart(2, '0')}:00 — ${((v / hsum) * 100).toFixed(1)}% времени тревог"><i style="height:${(v / hmax) * 100}%"></i></div>`).join('');
-  const peak = hours.indexOf(Math.max(...hours));
-  const ra = reg && A[reg];
+  const st = S.st, yrs = st.years, items = S.stItems || [];
+  const days = items.reduce((t, [, s]) => t + s.n, 0);
+  const latestY = [...yrs].reverse().find(yearOn);
+  const iL = yrs.indexOf(latestY);
+  const inLatest = items.filter(([p]) => p[4][iL]).length;
   const range = S.years.size ? [...S.years].sort().join(', ') : `${yrs[0]}–${yrs[yrs.length - 1]}`;
+  const top = items.slice().sort((a, b) => b[1].n - a[1].n).slice(0, 40);
+  const maxN = top.length ? top[0][1].n : 1;
+  const prev = $('#find-q')?.value || '';
   $('#detail').innerHTML = `
-    <h2>Тревоги за всю войну</h2>
-    <div class="muted" style="font-size:12px">архив с ${dateLabel(H.from)} по ${dateLabel(H.to)} · по областям</div>
+    <h2>Прилёты по городам и сёлам</h2>
+    <div class="muted" style="font-size:12px">с 24 фев 2022 по ${dateLabel(st.to)} · по новостям, база VIINA</div>
     <div class="years" role="group" aria-label="Годы">
       <button data-y="all" class="${S.years.size ? '' : 'on'}">Все годы</button>
-      ${yrs.map(y => `<button data-y="${y}" class="${S.years.has(y) ? 'on' : ''}">${y}</button>`).join('')}
+      ${yrs.map(y => `<button data-y="${y}" class="${S.years.has(y) ? 'on' : ''}" style="${S.years.has(y) ? '' : `border-color:${YEAR_COLOR[y]}55`}">${y}</button>`).join('')}
     </div>
+    <form id="find" class="find"><input id="find-q" type="search" placeholder="Проверить место: село, город…" value="${esc(prev)}" autocomplete="off"><button>Найти</button></form>
+    <div id="find-res"></div>
+    <p class="note" style="margin:6px 0 0">Клик по любому месту на карте — сколько дней с ударами было в радиусе 10 и 25 км, по годам.</p>
     <div class="kpis">
-      ${ra ? `<div class="kpi"><b>${fmtInt(ra.min / 60)}</b><span>часов тревоги, ${esc(shortOb(reg))}</span></div>
-        <div class="kpi"><b>${fmtInt(ra.cnt)}</b><span>${plural(ra.cnt, 'тревога', 'тревоги', 'тревог')}</span></div>
-        <div class="kpi"><b>${((ra.min / (warSpanDays() * 1440)) * 100).toFixed(1)}%</b><span>времени под тревогой</span></div>`
-      : `<div class="kpi"><b>${fmtInt(totCnt)}</b><span>тревог по областям</span></div>
-        <div class="kpi"><b>${fmtInt(totMin / 60)}</b><span>часов, сумма по областям</span></div>
-        <div class="kpi"><b>${fmtInt(longest[1] / 60)} ч</b><span>самая долгая: ${esc(shortOb(longest[0] || ''))}, ${dateLabel(longest[2])}</span></div>`}
+      <div class="kpi"><b>${fmtInt(items.length)}</b><span>мест с ударами · ${range}</span></div>
+      <div class="kpi"><b>${fmtInt(days)}</b><span>дней с ударами, сумма по местам</span></div>
+      <div class="kpi"><b>${fmtInt(inLatest)}</b><span>мест с ударами в ${latestY}</span></div>
     </div>
-    <h2 class="sec">${reg ? esc(reg) : 'Вся Украина'} · часы тревоги по месяцам</h2>
-    <div class="mbars" id="mbars">${bars}</div><div class="mticks">${ticks}</div>
-    <h2 class="sec">Время суток · ${range}</h2>
-    <div class="hbars">${hbars}</div>
-    <div class="bars-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
-    <p class="note" style="margin-top:4px">Чаще всего тревога звучит около ${String(peak).padStart(2, '0')}:00 по Киеву.</p>
-    <h2 class="sec">Области · ${range}${reg ? ' <button class="link" id="war-all">вся Украина</button>' : ''}</h2>
-    <ol class="rank" id="rank">${rows.map(([n, a], i) => `<li data-r="${esc(n)}" class="${n === reg ? 'on' : ''}"><span class="rk">${i + 1}</span><span class="nm">${esc(shortOb(n))}</span><span class="bar"><i style="width:${(a.min / rows[0][1].min) * 100}%"></i></span><span class="v">${fmtInt(a.min / 60)} ч</span></li>`).join('')}</ol>
-    <p class="note">Цифра на области — часы под тревогой за выбранные годы, по архиву eTryvoga. Архив теряет отбои,
-      поэтому тревоги дольше 6 ч сверены с официальным архивом «Повітряної тривоги» (15.03.2022–${dateLabel(H.official[1] + 'T')}) и обрезаны там,
-      где он их не подтверждает. Луганская обл. под постоянной тревогой с 4 апреля 2022, Крым — с 11 декабря 2022; в архиве их нет.
-      С декабря 2025 тревоги объявляют по районам, архив сводит их к областям — 2026 сравним с прошлыми годами приблизительно.</p>`;
+    <select id="obl-filter" class="sel"><option value="">Все области</option>${st.oblasts.map(o => `<option ${o === S.oblFilter ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+    <h2 class="sec">Чаще всего · ${range}${S.oblFilter ? ' · ' + esc(shortOb(S.oblFilter)) : ''}</h2>
+    <ol class="rank" id="rank">${top.map(([p, s], i) => `<li data-i="${st.p.indexOf(p)}"><span class="rk">${i + 1}</span><span class="nm"><span class="dot" style="background:${YEAR_COLOR[s.last]};margin-right:6px"></span>${esc(p[2])}</span><span class="bar"><i style="width:${(s.n / maxN) * 100}%;background:${YEAR_COLOR[s.last]}"></i></span><span class="v">${fmtInt(s.n)} дн</span></li>`).join('') || '<li>нет</li>'}</ol>
+    <p class="note">Точка — населённый пункт, где по новостям был удар: ракета, дрон, авиабомба или артиллерия. Цвет — последний год
+      с ударом (из выбранных), размер — сколько дней с ударами, заливка гуще — были разрушения или жертвы.
+      Источник — <a href="https://github.com/zhukovyuri/VIINA" target="_blank" rel="noopener">VIINA</a> (Мичиганский университет):
+      заголовки украинских СМИ, привязанные к месту. Каждый заголовок проверен: в нём есть название места и слово про удар,
+      нет другой области; для сёл — названа своя область. Чего не было в новостях, здесь нет: мелкие сёла с одним дроном
+      могут не попасть, а крупные города попадают почти каждый день.</p>`;
   document.querySelector('.years').addEventListener('click', e => {
     const b = e.target.closest('button[data-y]'); if (!b) return;
     if (b.dataset.y === 'all') return setYears([]);
     const cur = new Set(S.years); cur.has(b.dataset.y) ? cur.delete(b.dataset.y) : cur.add(b.dataset.y);
     setYears([...cur]);
   });
-  $('#mbars').addEventListener('click', e => { const b = e.target.closest('[data-y]'); if (b) setYears(S.years.size === 1 && S.years.has(b.dataset.y) ? [] : [b.dataset.y]); });
-  $('#rank').addEventListener('click', e => { const li = e.target.closest('li[data-r]'); if (li) selectWarRegion(li.dataset.r); });
-  $('#war-all')?.addEventListener('click', () => selectWarRegion(null));
+  $('#find').addEventListener('submit', e => { e.preventDefault(); findPlace($('#find-q').value); });
+  $('#obl-filter').addEventListener('change', e => {
+    S.oblFilter = e.target.value; drawStrikes(); renderWar();
+    if (S.oblFilter) { oblLayer.eachLayer(l => { if (l.feature.properties.name === S.oblFilter) map.fitBounds(l.getBounds(), { paddingTopLeft: [0, 40] }); }); }
+  });
+  $('#rank').addEventListener('click', e => {
+    const li = e.target.closest('li[data-i]'); if (!li) return;
+    const p = st.p[+li.dataset.i];
+    map.setView([p[0], p[1]], Math.max(map.getZoom(), 9));
+    L.popup({ maxWidth: 340 }).setLatLng([p[0], p[1]]).setContent(strikePopup(p)).openOn(map);
+  });
 }
 
 // ---------- слои, режимы, навигация ----------
@@ -600,16 +657,17 @@ async function loadNight(n) {
 
 async function route() {
   stop(); map.closePopup(); S.sel = null;
-  const h = decodeURIComponent(location.hash.slice(1)) || 'war'; // по умолчанию — тревоги за всю войну
+  gStr.clearLayers(); if (radiusLayer) { map.removeLayer(radiusLayer); radiusLayer = null; }
+  const h = decodeURIComponent(location.hash.slice(1)) || 'war'; // по умолчанию — прилёты за всю войну
   const nights = S.index.map(n => n.night);
   if (h.startsWith('war')) {
     S.mode = 'war'; S.data = null; S.nightAlerts = null;
     $('#timeline').classList.add('off');
     gTrk.clearLayers(); gImp.clearLayers(); S.tracks = []; S.impacts = [];
     document.body.dataset.mode = 'war';
-    $('#detail').innerHTML = '<p class="muted">Загрузка архива тревог…</p>';
-    await loadHist();
-    if (S.mode !== 'war') return; // пока грузился архив, ушли в другой режим
+    $('#detail').innerHTML = '<p class="muted">Загрузка базы прилётов…</p>';
+    await loadStrikes();
+    if (S.mode !== 'war') return; // пока грузилась база, ушли в другой режим
     S.years = new Set((h.split('=')[1] || '').split(',').filter(y => warYears().includes(y)));
     styleWar(); renderWar(); renderLegend();
     map.fitBounds(oblLayer.getBounds(), { paddingTopLeft: [0, 20], paddingBottomRight: [0, 10] });
@@ -643,10 +701,9 @@ async function route() {
   oblLayer = L.geoJSON(geo, { pane: 'obl', style: { color: '#56606e', weight: 0.8, fillOpacity: 0 },
     onEachFeature: (f, l) => {
       l.bindTooltip(() => oblTooltip(l), { sticky: true, opacity: 1 });
-      l.on('click', () => { if (S.mode === 'war') selectWarRegion(f.properties.name); });
     } }).addTo(gObl);
   const N = S.index;
   const upd = new Date(alerts.updated).toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  $('#period').textContent = `тревоги с февраля 2022${N.length ? ` · атаки: ночи ${nightLabel(N[0].night)} – ${nightLabel(N[N.length - 1].night)}` : ''} · данные на ${upd}`;
+  $('#period').textContent = `прилёты с 2022 по городам и сёлам${N.length ? ` · траектории: ночи ${nightLabel(N[0].night)} – ${nightLabel(N[N.length - 1].night)}` : ''}`;
   route();
 })();

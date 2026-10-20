@@ -18,6 +18,7 @@ python scripts\split_nights.py 2>&1 | Out-File -Append -Encoding utf8 $log
 python scripts\run_extract.py $Parallel 2>&1 | Select-Object -Last 1 | ForEach-Object { Log $_ }
 python scripts\build_alerts.py $Since 2>&1 | ForEach-Object { Log $_ }
 python scripts\build_site.py 2>&1 | ForEach-Object { Log $_ }
+python scripts\build_strikes.py 2>&1 | ForEach-Object { Log $_ }
 
 git add data index.html app.js style.css scripts README.md update.ps1 .gitignore
 git commit -q -m "Данные: обновление $(Get-Date -Format 'yyyy-MM-dd HH:mm')" 2>&1 | Out-Null

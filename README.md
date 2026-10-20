@@ -2,8 +2,8 @@
 
 https://qwert11.github.io/map-alert/
 
-Три режима: «По ночам» и «30 ночей» — атаки последнего месяца, «Вся война» — тревоги
-по областям с февраля 2022 с фильтром по годам (часы под тревогой, помесячно, по времени суток).
+Три режима: «Прилёты 2022–26» (по умолчанию) — где по городам и сёлам были удары, по годам, с проверкой
+радиуса 10/25 км вокруг любого места; «По ночам» и «30 ночей» — траектории атак последнего месяца.
 
 Ночь за ночью: где была воздушная тревога, откуда и куда летели ракеты и дроны,
 где были прилёты. Таймлайн ночи проигрывается: области загораются по тревогам,
@@ -13,7 +13,8 @@ https://qwert11.github.io/map-alert/
 
 | Слой | Источник |
 |---|---|
-| Тревоги по областям, вся война с 25.02.2022 | архив eTryvoga, [датасет Vadimkin](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset) (`volunteer_data_uk.csv`), сверенный с официальным (`official_data_uk.csv`) |
+| Прилёты по населённым пунктам с 2022 | [VIINA](https://github.com/zhukovyuri/VIINA) — заголовки СМИ, привязанные к месту; каждый проверен на название места, слово про удар и область (`scripts/build_strikes.py`) |
+| Тревоги по областям в ночи атак | архив eTryvoga, [датасет Vadimkin](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset), сверенный с официальным |
 | Траектории | посты [@kpszsu](https://t.me/s/kpszsu), [@monitorwarr](https://t.me/s/monitorwarr), [@war_monitor](https://t.me/s/war_monitor), [@vanek_nikolaev](https://t.me/s/vanek_nikolaev) |
 | Сколько запущено/сбито | утренние сводки Повітряних сил |
 | Прилёты | ОВА/МВА, ДСНС, СМИ — поиск по каждой ночи |
@@ -34,10 +35,10 @@ Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
 1. `scripts/collect_tg.py <канал> <с даты>` — посты через `t.me/s/<канал>?before=<id>` → `_tmp/tg/*.jsonl`
 2. `scripts/split_nights.py` — ночь на D = окно с 12:00 D−1 до 12:00 D по Киеву → `_tmp/nights/D.txt`
 3. `scripts/run_extract.py [параллельно]` — `claude -p` по `scripts/extract_prompt.md` на каждую новую ночь → `data/extract/D.json`
-4. `scripts/build_alerts.py <с даты>` → `data/alerts.json`; `scripts/build_history.py` → `data/history.json` (вся война).
-   Оба берут архив через `scripts/alerts_clean.py`: eTryvoga теряет отбои, поэтому тревоги дольше 6 ч
-   сверяются с официальным архивом и обрезаются, где он их не подтверждает
+4. `scripts/build_alerts.py <с даты>` → `data/alerts.json` (через `scripts/alerts_clean.py`: eTryvoga теряет отбои,
+   тревоги дольше 6 ч сверяются с официальным архивом)
 5. `scripts/build_site.py` — геокодирование по GeoNames, чистка → `data/nights/D.json`, `data/index.json`
+6. `scripts/build_strikes.py` — прилёты за всю войну из VIINA → `data/strikes.json`
 
 Границы областей — geoBoundaries ADM1 (`scripts/build_geo.py` → `data/oblasts.geojson`).
 Перезапустить извлечение одной ночи: удалить `data/extract/D.json` и запустить шаг 3 с этой датой.

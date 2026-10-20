@@ -111,6 +111,12 @@ button.link { background: none; border: 0; color: #8cc8ff; cursor: pointer; padd
 .lbl-off .olbl { display: none; }
 .scale { display: inline-block; width: 70px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,69,58,.12), rgba(255,69,58,.85)); }
 body[data-mode="war"] #nights-wrap, body[data-mode="war"] #layers { display: none; }
+.find { display: flex; gap: 6px; margin: 10px 0 0; }
+.find input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 7px 10px; font: inherit; }
+.find input:focus { outline: none; border-color: var(--accent); }
+.find button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 0 12px; cursor: pointer; }
+.sel { width: 100%; margin-top: 10px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 6px 8px; font: inherit; }
+ol.rank .nm { display: flex; align-items: center; }
 
 /* обзор */
 .bars { display: flex; align-items: flex-end; gap: 2px; height: 90px; margin: 8px 0 2px; }
