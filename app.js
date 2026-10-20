@@ -465,7 +465,7 @@ const LABEL_AT = { 'Київська область': [50.95, 29.95], 'Київ'
 const PERM_SINCE = { 'Луганська область': '4 апреля 2022', 'Автономна Республіка Крим': '11 декабря 2022', 'Севастополь': '11 декабря 2022' };
 S.years = new Set(); S.warRegion = null;
 
-async function loadHist() { if (!S.hist) S.hist = await fetch('data/history.json').then(r => r.json()); return S.hist; }
+async function loadHist() { if (!S.hist) S.hist = await fetch('data/history.json', { cache: 'no-cache' }).then(r => r.json()); return S.hist; }
 const warYears = () => [...new Set(S.hist.months.map(m => m.slice(0, 4)))];
 const yearOn = y => !S.years.size || S.years.has(y);
 function warAgg() {
@@ -591,13 +591,13 @@ function go(target) { if (!target) return; if (location.hash.slice(1) !== target
 window.addEventListener('hashchange', route);
 
 async function loadNight(n) {
-  if (!S.cache[n]) S.cache[n] = fetch(`data/nights/${n}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!S.cache[n]) S.cache[n] = fetch(`data/nights/${n}.json`, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
   return S.cache[n];
 }
 
 async function route() {
   stop(); map.closePopup(); S.sel = null;
-  const h = decodeURIComponent(location.hash.slice(1));
+  const h = decodeURIComponent(location.hash.slice(1)) || 'war'; // по умолчанию — тревоги за всю войну
   const nights = S.index.map(n => n.night);
   if (h.startsWith('war')) {
     S.mode = 'war'; S.data = null; S.nightAlerts = null;
@@ -635,7 +635,7 @@ async function route() {
 // ---------- старт ----------
 (async () => {
   const [geo, alerts, index] = await Promise.all(['data/oblasts.geojson', 'data/alerts.json', 'data/index.json']
-    .map(u => fetch(u).then(r => r.json())));
+    .map(u => fetch(u, { cache: 'no-cache' }).then(r => r.json())));
   S.geo = geo; S.alerts = alerts; S.index = index.nights || [];
   oblLayer = L.geoJSON(geo, { pane: 'obl', style: { color: '#56606e', weight: 0.8, fillOpacity: 0 },
     onEachFeature: (f, l) => {
@@ -643,6 +643,7 @@ async function route() {
       l.on('click', () => { if (S.mode === 'war') selectWarRegion(f.properties.name); });
     } }).addTo(gObl);
   const N = S.index;
-  $('#period').textContent = N.length ? `ночи с ${nightLabel(N[0].night)} по ${nightLabel(N[N.length - 1].night)} 2026 · тревоги до ${new Date(alerts.updated).toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'нет данных';
+  const upd = new Date(alerts.updated).toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  $('#period').textContent = `тревоги с февраля 2022${N.length ? ` · атаки: ночи ${nightLabel(N[0].night)} – ${nightLabel(N[N.length - 1].night)}` : ''} · данные на ${upd}`;
   route();
 })();
