@@ -606,7 +606,7 @@ async function route() {
     document.body.dataset.mode = 'war';
     $('#detail').innerHTML = '<p class="muted">Загрузка архива тревог…</p>';
     await loadHist();
-    if (!location.hash.startsWith('#war')) return;
+    if (S.mode !== 'war') return; // пока грузился архив, ушли в другой режим
     S.years = new Set((h.split('=')[1] || '').split(',').filter(y => warYears().includes(y)));
     styleWar(); renderWar(); renderLegend();
     map.fitBounds(oblLayer.getBounds(), { paddingTopLeft: [0, 20], paddingBottomRight: [0, 10] });
