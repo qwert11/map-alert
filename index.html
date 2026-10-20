@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Карта тревог и атак</title>
+<meta name="description" content="Тревоги по областям Украины, траектории ракет и дронов, места прилётов — по ночам, по данным Повітряних сил, мониторов и ОВА.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23151a21'/%3E%3Cpath d='M8 23 Q14 8 25 9' stroke='%23ff9f0a' stroke-width='2.5' fill='none'/%3E%3Ccircle cx='25' cy='9' r='3.5' fill='%23ff453a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header class="ph">
+      <div class="ph-top">
+        <h1>Карта тревог и атак</h1>
+        <button id="sheet-toggle" class="icon-btn" aria-label="Свернуть панель">▾</button>
+      </div>
+      <p class="sub"><span id="period">загрузка…</span></p>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-mode="night" class="on">По ночам</button>
+        <button role="tab" data-mode="all">Весь период</button>
+      </div>
+    </header>
+    <div id="panel-body">
+      <div id="legend-m"></div>
+      <section id="detail"></section>
+      <section id="nights-wrap">
+        <h2 class="sec">Ночи <span class="muted" id="nights-count"></span></h2>
+        <ol id="nights"></ol>
+      </section>
+      <footer class="src">
+        <p><b>Траектории</b> восстановлены автоматически (языковой моделью) из постов
+          <a href="https://t.me/s/kpszsu" target="_blank" rel="noopener">Повітряних сил</a>,
+          <a href="https://t.me/s/monitorwarr" target="_blank" rel="noopener">Монітора</a>,
+          <a href="https://t.me/s/war_monitor" target="_blank" rel="noopener">war_monitor</a> и
+          <a href="https://t.me/s/vanek_nikolaev" target="_blank" rel="noopener">Николаевского Ванька</a> —
+          это схема пролёта по сообщениям мониторов, а не радарный трек. Точки — населённые пункты из сообщений.</p>
+        <p><b>Прилёты</b> — по сообщениям ОВА/МВА, ДСНС и СМИ, с точностью до населённого пункта или района города.</p>
+        <p><b>Тревоги</b> — по областям, архив eTryvoga
+          (<a href="https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset" target="_blank" rel="noopener">датасет Vadimkin</a>).
+          Луганская обл. и Крым — постоянная тревога, на карте не закрашены.</p>
+      </footer>
+    </div>
+  </aside>
+  <main id="stage">
+    <div id="map"></div>
+    <div id="layers" class="card">
+      <label><input type="checkbox" data-layer="alerts" checked> Тревоги</label>
+      <label><input type="checkbox" data-layer="missiles" checked> Ракеты</label>
+      <label><input type="checkbox" data-layer="drones" checked> Дроны</label>
+      <label><input type="checkbox" data-layer="impacts" checked> Прилёты</label>
+    </div>
+    <div id="legend" class="card"></div>
+    <div id="timeline" class="card">
+      <button id="play" class="icon-btn" aria-label="Проиграть ночь">▶</button>
+      <div class="tl-main">
+        <div class="tl-head">
+          <span id="tl-time">вся ночь</span>
+          <span id="tl-alerts" class="muted"></span>
+          <span class="tl-speed">
+            <button data-speed="1">×1</button><button data-speed="3" class="on">×3</button><button data-speed="8">×8</button>
+          </span>
+        </div>
+        <div class="tl-track">
+          <svg id="tl-chart" preserveAspectRatio="none"></svg>
+          <input id="tl-range" type="range" min="0" max="1440" step="1" value="1440" aria-label="Время">
+        </div>
+        <div class="tl-axis"><span>12:00</span><span>18:00</span><span>00:00</span><span>06:00</span><span>12:00</span></div>
+      </div>
+      <button id="tl-all" class="icon-btn" aria-label="Показать всю ночь" title="Вся ночь">⤢</button>
+    </div>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js?v=3"></script>
+</body>
+</html>
