@@ -66,7 +66,10 @@ function union(iv) { // суммарная длина объединения и�
 }
 
 // ---------- карта ----------
-const map = L.map('map', { zoomControl: true, minZoom: 4, maxZoom: 12, worldCopyJump: false }).setView([48.7, 32.5], 6);
+const map = L.map('map', { zoomControl: true, minZoom: 4, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90 }).setView([48.7, 32.5], 6);
+// подписи часов на областях: мельче на мелком масштабе, совсем мелкий — без них
+const lblScale = () => { const z = map.getZoom(), c = map.getContainer().classList; c.toggle('lbl-sm', z < 5.5); c.toggle('lbl-off', z < 4.6); };
+map.on('zoomend', lblScale);
 // OSM-тайлы, затемнённые CSS-фильтром (.leaflet-tile-pane): подписи остаются местные, ключ не нужен
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 12, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',

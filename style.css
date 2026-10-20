@@ -107,6 +107,8 @@ ol.rank li:hover, ol.rank li.on { background: var(--panel-2); }
 .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 button.link { background: none; border: 0; color: #8cc8ff; cursor: pointer; padding: 0; font-size: 12px; text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .olbl span { position: absolute; transform: translate(-50%, -50%); font-size: 11px; font-weight: 600; color: #fff; text-shadow: 0 0 3px #000, 0 0 6px #000; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lbl-sm .olbl span { font-size: 9px; }
+.lbl-off .olbl { display: none; }
 .scale { display: inline-block; width: 70px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,69,58,.12), rgba(255,69,58,.85)); }
 body[data-mode="war"] #nights-wrap, body[data-mode="war"] #layers { display: none; }
 
