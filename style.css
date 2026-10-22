@@ -140,6 +140,14 @@ ol.rank .nm { display: flex; align-items: center; }
   border-radius: var(--radius); backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
 #layers { top: 12px; right: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 #layers label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+#paths-card { top: 58px; right: 12px; padding: 8px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+body:not([data-mode="war"]) #paths-card { display: none; }
+#paths-card label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+#paths-card .pc-main { font-weight: 600; }
+#paths-opts { display: flex; flex-direction: column; gap: 3px; }
+#paths-opts:empty { display: none; }
+#paths-opts .ln { display: inline-block; width: 16px; border-top: 2.5px solid; }
+#paths-card .pc-stat { font-size: 12px; margin-top: 2px; }
 #legend { top: 12px; left: 56px; padding: 8px 10px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: calc(100% - 210px); }
 #legend-m { display: none; }
 #legend .lg, #legend-m .lg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -194,6 +202,7 @@ ol.rank .nm { display: flex; align-items: center; }
   #legend { display: none; }
   #legend-m { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); padding: 10px 16px 0; }
   #layers { left: 8px; right: 8px; top: 8px; flex-direction: row; justify-content: space-between; font-size: 12px; padding: 5px 10px; }
+  #paths-card { top: 52px; right: 8px; font-size: 12px; padding: 5px 10px; }
   #timeline { left: 8px; right: 8px; bottom: 8px; gap: 6px; padding: 6px 8px; }
   .leaflet-control-zoom { display: none; }
 }

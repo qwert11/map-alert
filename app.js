@@ -507,8 +507,9 @@ function drawStrikes() {
   items.sort((a, b) => (a[1].last - b[1].last) || (b[1].n - a[1].n)); // свежие и мелкие — сверху
   for (const [p, s] of items) {
     const col = YEAR_COLOR[s.last];
+    const dim = S.paths.on ? 0.35 : 1; // при траекториях круги бледнее, чтобы линии было видно
     L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n)), color: col, weight: fl ? 1.6 : 1,
-      opacity: 0.95, fillColor: col, fillOpacity: fl ? 0.12 : s.h ? 0.55 : 0.22 })
+      opacity: 0.95 * (S.paths.on ? 0.6 : 1), fillColor: col, fillOpacity: (fl ? 0.12 : s.h ? 0.55 : 0.22) * dim })
       .bindTooltip(`<b>${esc(p[2])}</b> · ${esc(shortOb(ds.oblasts[p[3]]))}<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
       .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(fl ? flightPopup(p) : strikePopup(p)).openOn(map); })
       .addTo(gStr);
@@ -538,6 +539,106 @@ function warTooltip(nm) {
   return `<b>${esc(nm)}</b><br><span class="muted">${k ? `${k} ${plural(k, 'место', 'места', 'мест')} с ударами` : 'ударов в базе нет'}</span>`;
 }
 
+// ---------- траектории за всю войну: грузятся только по галочке ----------
+const PG = { d: ['shahed', 'Шахеды'], j: ['jet_drone', 'Реактивные'], l: ['loitering', 'Бандероли'], m: ['cruise', 'Ракеты'], b: ['ballistic', 'Баллистика'] };
+const PG_LONG = { d: 'Шахед', j: 'Реактивный дрон', l: '«Бандероль»', m: 'Ракета', b: 'Баллистика' };
+map.createPane('pth').style.zIndex = 400;
+const pthRenderer = L.canvas({ pane: 'pth', tolerance: 5 });
+const gPth = L.layerGroup().addTo(map);
+S.paths = { on: false, idx: null, idxv: null, prom: {}, data: {}, groups: new Set(['d', 'j', 'l', 'm']), busy: false, count: 0 };
+
+async function loadPaths() {
+  const P = S.paths;
+  if (!P.idx) P.idx = fetch('data/paths/index.json', { cache: 'no-cache' }).then(r => r.json());
+  const idx = await P.idx;
+  const ys = idx.years.map(y => y.y).filter(yearOn);
+  await Promise.all(ys.map(y => (P.prom[y] = P.prom[y] || fetch(`data/paths/${y}.json`, { cache: 'no-cache' })
+    .then(r => r.json()).then(d => { P.data[y] = d; }))));
+  return idx;
+}
+const pathYears = () => Object.keys(S.paths.data).filter(yearOn).sort();
+function pathPts(row) { const a = row[2], out = []; for (let i = 0; i < a.length; i += 6) out.push(a.slice(i, i + 6)); return out; }
+function pathPopup(d, row) {
+  const ch = S.paths.idxv.channels, pts = pathPts(row), night = d.nights[row[1]];
+  return `<h3>${PG_LONG[row[0]]} · ночь на ${dateLabel(night)}</h3>
+    <ol style="margin:6px 0;padding-left:20px">${pts.map(p => `<li>${fmtMin(p[3])} — ${esc(d.names[p[2]] || '?')}
+      <a href="https://t.me/${ch[p[4]]}/${p[5]}" target="_blank" rel="noopener">${ch[p[4]]}</a></li>`).join('')}</ol>
+    <div class="muted">${row[0] === 'b' ? 'Прямая от района пуска до цели по сообщениям мониторов.'
+      : 'Точки — места, где цель видели мониторы. Между ними — прямая: реальный путь мог петлять.'}</div>`;
+}
+function drawPaths() {
+  gPth.clearLayers();
+  const P = S.paths;
+  P.count = 0;
+  if (!P.on || S.mode !== 'war' || !P.idxv) return;
+  for (const y of pathYears()) {
+    const d = P.data[y];
+    for (const row of d.t) {
+      if (!P.groups.has(row[0])) continue;
+      const pts = pathPts(row), col = COLOR(PG[row[0]][0]);
+      const ln = L.polyline(pts.map(p => [p[0], p[1]]), { renderer: pthRenderer, color: col, weight: 1.6, opacity: 0.5 })
+        .bindTooltip(`${PG_LONG[row[0]]} · ночь на ${dateLabel(d.nights[row[1]])}<br>${pts.map(p => esc(d.names[p[2]])).join(' → ')}`, { sticky: true, opacity: 1 })
+        .on('mouseover', () => ln.setStyle({ weight: 3.5, opacity: 1 }))
+        .on('mouseout', () => ln.setStyle({ weight: 1.6, opacity: 0.5 }))
+        .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 360 }).setLatLng(e.latlng).setContent(pathPopup(d, row)).openOn(map); });
+      ln.addTo(gPth); P.count++;
+    }
+  }
+}
+function renderPathsCard() {
+  const P = S.paths, box = $('#paths-opts');
+  if (!P.on) { box.innerHTML = ''; return; }
+  const ys = pathYears();
+  box.innerHTML = `${Object.entries(PG).map(([g, [t, nm]]) => `<label><input type="checkbox" data-g="${g}" ${P.groups.has(g) ? 'checked' : ''}>
+      <span class="ln" style="border-color:${COLOR(t)}"></span>${nm}</label>`).join('')}
+    <div class="muted pc-stat">${P.busy ? 'загрузка…' : `${fmtInt(P.count)} ${plural(P.count, 'трек', 'трека', 'треков')} · ${ys.length ? ys.join(', ') : '—'}`}</div>`;
+}
+async function setPaths(on) {
+  const P = S.paths; P.on = on;
+  if (on && S.mode === 'war') {
+    P.busy = true; renderPathsCard();
+    P.idxv = await loadPaths();
+    P.busy = false;
+  }
+  drawPaths(); renderPathsCard();
+  if (S.mode === 'war' && S.st) { drawStrikes(); renderWar(); }
+}
+$('#paths-on').addEventListener('change', e => setPaths(e.target.checked));
+$('#paths-opts').addEventListener('change', e => {
+  const g = e.target.dataset.g; if (!g) return;
+  e.target.checked ? S.paths.groups.add(g) : S.paths.groups.delete(g);
+  drawPaths(); renderPathsCard();
+});
+// в скольких ночах трек прошёл в пределах 10 / 25 км от точки — по годам
+function pathsNear(ll) {
+  const P = S.paths, out = {};
+  if (!P.on || !P.idxv) return null;
+  const k = Math.cos(ll.lat * Math.PI / 180) * 111.32, X = lon => (lon - ll.lng) * k, Y = lat => (lat - ll.lat) * 110.57;
+  const segDist = (ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0; return Math.hypot(ax + t * dx, ay + t * dy); };
+  for (const y of pathYears()) {
+    const d = P.data[y], n10 = new Set(), n25 = new Set();
+    for (const row of d.t) {
+      if (!P.groups.has(row[0])) continue;
+      const a = row[2];
+      let best = 1e9;
+      for (let i = 0; i + 6 < a.length; i += 6) best = Math.min(best, segDist(X(a[i + 1]), Y(a[i]), X(a[i + 7]), Y(a[i + 6])));
+      if (best <= 25) n25.add(row[1]);
+      if (best <= 10) n10.add(row[1]);
+    }
+    out[y] = [n10.size, n25.size];
+  }
+  return out;
+}
+function pathsHtml(ll) {
+  const pn = pathsNear(ll); if (!pn) return '';
+  const row = i => S.st.years.map(y => `<span style="color:${pn[y] && pn[y][i] ? YEAR_COLOR[y] : 'var(--faint)'}">${y}: <b>${pn[y] ? pn[y][i] || '—' : '·'}</b></span>`).join(' · ');
+  return `<div style="margin:6px 0 4px"><b>Траектории</b> (${[...S.paths.groups].map(g => PG[g][1].toLowerCase()).join(', ')}), ночей с пролётом — в 10 км:<br>${row(0)}</div>
+    <div style="margin:4px 0">в 25 км:<br>${row(1)}</div>
+    <div class="muted" style="font-size:12px">Это не меньше, чем было: считаются только треки, которые удалось восстановить по конкретным сёлам.
+      Когда мониторы писали лишь «на Вінниччині курсом на захід», трека нет — такие ночи видны в «Куда летело».</div>`;
+}
+
 // проверка места: сколько ударов было в радиусе 10 и 25 км
 const km = (a, b, c, d) => { const t = Math.PI / 180, x = Math.sin((c - a) * t / 2) ** 2 + Math.cos(a * t) * Math.cos(c * t) * Math.sin((d - b) * t / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
 function radiusCheck(ll, label) {
@@ -560,6 +661,7 @@ function radiusCheck(ll, label) {
     <div style="margin:4px 0">в радиусе 25 км:<br>${yearsRow(sum(25))}</div>
     ${S.fl ? `<div style="margin:6px 0 4px"><b>Куда летело</b> (мониторинг), дней — в радиусе 10 км:<br>${yearsRow(fsum(10))}</div>
     <div style="margin:4px 0">в радиусе 25 км:<br>${yearsRow(fsum(25))}</div>` : ''}
+    ${pathsHtml(ll)}
     ${near.length ? `<div class="muted">Ближайшие места с ударами:</div><ol>${list}</ol>` : '<div>В радиусе 25 км точных мест с ударами в базе нет.</div>'}
     ${rnear.length ? `<div class="muted" style="margin-top:4px">Удары в районе без точного места:</div><ul style="margin:4px 0;padding-left:18px">${rlist}</ul>` : ''}`).openOn(map);
 }
@@ -594,6 +696,7 @@ function setYears(ys) {
   if (S.years.size === all.length) S.years.clear();
   history.replaceState(null, '', '#war' + (S.years.size ? '=' + [...S.years].sort().join(',') : ''));
   drawStrikes(); renderWar();
+  if (S.paths.on) setPaths(true);
 }
 function renderWar() {
   const st = DS(), yrs = st.years, items = S.stItems || [];
@@ -631,6 +734,12 @@ function renderWar() {
       war_monitor, Николаевский Ванёк) называли в сообщениях о ракетах, дронах и КАБах: «ракета на Бурштин», «БпЛА повз Калуш».
       Это «куда/мимо летело», а не обязательно попадание. Цвет — последний год, размер — сколько дней. Подробный мониторинг
       по западу у каналов идёт в основном с 2024 года, за 2022–2023 упоминаний меньше.</p>` : ''}
+    ${S.paths.on ? `<p class="note"><b>Траектории</b> собраны автоматически из постов мониторов (Повітряні сили, Монітор, war_monitor,
+      Николаевский Ванёк). Линия идёт только между населёнными пунктами, где цель видели («повз Турбів», «через Прилуки»),
+      и только если перелёт возможен по скорости (шахед до 200 км/ч, реактивный до 400, ракета до 800) и по курсу,
+      который мониторы назвали в прошлом сообщении. «Курсом на Хмельниччину» без конкретного места линию не даёт —
+      поэтому где мониторы писали только области, линий нет, хотя летало. Детальный мониторинг у этих каналов —
+      в основном с 2024 года. Клик по линии — точки, время и посты-источники.</p>` : ''}
     <p class="note">Точка — населённый пункт, где по новостям был удар: ракета, дрон, авиабомба или артиллерия. Цвет — последний год
       с ударом (из выбранных), размер — сколько дней с ударами, заливка гуще — были разрушения или жертвы.
       Источник — <a href="https://github.com/zhukovyuri/VIINA" target="_blank" rel="noopener">VIINA</a> (Мичиганский университет):
@@ -685,7 +794,7 @@ async function loadNight(n) {
 
 async function route() {
   stop(); map.closePopup(); S.sel = null;
-  gStr.clearLayers(); if (radiusLayer) { map.removeLayer(radiusLayer); radiusLayer = null; }
+  gStr.clearLayers(); gPth.clearLayers(); if (radiusLayer) { map.removeLayer(radiusLayer); radiusLayer = null; }
   const h = decodeURIComponent(location.hash.slice(1)) || 'war'; // по умолчанию — прилёты за всю войну
   const nights = S.index.map(n => n.night);
   if (h.startsWith('war')) {
@@ -698,6 +807,7 @@ async function route() {
     if (S.mode !== 'war') return; // пока грузилась база, ушли в другой режим
     S.years = new Set((h.split('=')[1] || '').split(',').filter(y => warYears().includes(y)));
     styleWar(); renderWar(); renderLegend();
+    if (S.paths.on) setPaths(true);
     map.fitBounds(oblLayer.getBounds(), { paddingTopLeft: [0, 20], paddingBottomRight: [0, 10] });
   } else if (h === 'all') {
     S.mode = 'all'; S.data = null; S.nightAlerts = null;

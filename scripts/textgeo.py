@@ -162,11 +162,11 @@ class TextGeo:
         return obs
 
     def _cands(self, toks, i):
-        """Кандидаты для токена i: [(geonameid, длина в токенах)]."""
+        """Кандидаты для токена i: [(geonameid, длина в токенах, сколько букв совпало)]."""
         w = toks[i]
         out = []
         if w in self.exact:
-            out += [(g, 1) for g in self.exact[w]]
+            out += [(g, 1, len(w) + 1) for g in self.exact[w]]
         for s, n, g, full in self.idx.get(w[:4], []) + self.idx3.get(w[:3], []):
             if n == 1:
                 if w.startswith(s) and w != s or w == s:
@@ -179,14 +179,13 @@ class TextGeo:
                     if len(rest) <= 3:
                         if re.match('^(ськ|цьк|зьк|ск|цк)', rest):
                             continue
-                        out.append((g, 1))
-                    elif re.match('^(ськ|цьк|зьк|ськ|ск|цк|зк)', rest) and len(rest) <= 7 and ADJ_NEXT.match(nxt) \
-                            and not ADMIN_NEXT.match(nxt):
-                        out.append((g, 1))
+                        out.append((g, 1, len(s)))
+                    elif re.match('^(ськ|цьк|зьк|ськ|ск|цк|зк)', rest) and len(rest) <= 7 and ADJ_NEXT.match(nxt)                             and not ADMIN_NEXT.match(nxt):
+                        out.append((g, 1, len(s)))
             else:
                 if i + n - 1 < len(toks) and all(toks[i + k].startswith(s[k]) and len(toks[i + k]) - len(s[k]) <= 3
                                                  for k in range(n)):
-                    out.append((g, n))
+                    out.append((g, n, sum(map(len, s))))
         return out
 
     def find(self, text, oblasts=None):
@@ -197,11 +196,13 @@ class TextGeo:
         spans = [m.span() for m in ms]
         words = [low(x).strip('-') for x in raw]  # все слова: следующее нужно для «Бурштинська ТЕС»
         found = {}
+        self.pos = {}  # geonameid -> позиция имени в тексте (для разбора «повз Х» / «курсом на Х»)
         covered = set()
         lt = low(text)
         for form, g in KR_FORMS:
             if form in lt and g in self.place:
                 found[g] = self.place[g]
+                self.pos[g] = lt.find(form)
         front_report = bool(FRONT_REPORT.search(text))
         for i, w in enumerate(words):
             if i in covered or not raw[i][0].isupper() or len(w) < 3 or w in STOP or w in self.common:
@@ -214,8 +215,10 @@ class TextGeo:
             cs = self._cands(words, i)
             if not cs:
                 continue
-            longest = max(n for _, n in cs)
+            longest = max(c[1] for c in cs)
             cs = [c for c in cs if c[1] == longest]  # «Нова Каховка» важнее «Каховки»
+            best_q = max(c[2] for c in cs)
+            cs = [c for c in cs if c[2] >= best_q - 1]  # «Славутич» — Славутич, а не Славута + окончание
             if longest == 1:
                 # рядом слово с заглавной, которое не место: имя и фамилия («Женя Галич», «Максим Козицький»)
                 if any(0 <= j < len(raw) and raw[j][:1].isupper() and not raw[j].isupper() and len(raw[j]) > 2
@@ -224,7 +227,7 @@ class TextGeo:
                        for j in (i - 1, i + 1)):
                     continue
             covered |= set(range(i + 1, i + longest))
-            gs = {g for g, _ in cs}
+            gs = {c[0] for c in cs}
             pl = [self.place[g] for g in gs]
             in_ob = [p for p in pl if p[4] in obs]
             bigs_out = [p for p in pl if p[5] >= MAJOR and p not in in_ob]
@@ -244,4 +247,5 @@ class TextGeo:
             if pick[4] not in obs and pick[4] in REAR and pick[5] < MAJOR and any(p[4] in FRONTL for p in pl):
                 continue  # тыловой городок с тёзкой у фронта, область не названа — неоднозначно
             found[pick[0]] = pick
+            self.pos.setdefault(pick[0], spans[i][0])
         return list(found.values())
