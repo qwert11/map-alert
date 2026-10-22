@@ -14,6 +14,12 @@ Log "start since=$Since"
 foreach ($c in 'kpszsu', 'monitorwarr', 'war_monitor', 'vanek_nikolaev') {
   python scripts\collect_tg.py $c $Since 2>&1 | Select-Object -Last 1 | ForEach-Object { Log $_ }
 }
+# свежие посты областных каналов — только для траекторий (build_paths.py); история с 2024 — scripts\collect_regional.ps1
+foreach ($c in 'kudy_letyt', 'deraketaua', 'vinnytsia_golovne', 'vinnitsa_info', 'khmelnych', 'khmlv', 'zt_radar',
+               'rivne_golovne', 'rivne_radar', 'truexaternopil', 'lviv_golovne', 'truexafrankivsk', 'Lutsk_monitor',
+               'lutsk_radar', 'cherkasy_golovne', 'cherkasy_radar', 'kyivradar') {
+  python scripts\collect_tg.py $c $Since 2>&1 | Select-Object -Last 1 | ForEach-Object { Log $_ }
+}
 python scripts\split_nights.py 2>&1 | Out-File -Append -Encoding utf8 $log
 python scripts\run_extract.py $Parallel 2>&1 | Select-Object -Last 1 | ForEach-Object { Log $_ }
 python scripts\build_alerts.py $Since 2>&1 | ForEach-Object { Log $_ }

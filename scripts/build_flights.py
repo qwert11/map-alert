@@ -31,7 +31,8 @@ for path in glob.glob(os.path.join(TMP, 'hist', '*.jsonl')) + glob.glob(os.path.
             continue
         p = json.loads(line)
         if p['dt'] >= '2022-02-24' and p['text']:
-            posts[(ch, p['id'])] = p
+            if ch in ('kpszsu', 'monitorwarr', 'war_monitor', 'vanek_nikolaev'):  # областные в _tmp/tg — только для траекторий
+                posts[(ch, p['id'])] = p
 print('posts', len(posts))
 
 tg = TextGeo()

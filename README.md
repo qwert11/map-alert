@@ -16,7 +16,7 @@ https://qwert11.github.io/map-alert/
 | Прилёты по населённым пунктам с 2022 | [VIINA](https://github.com/zhukovyuri/VIINA) — заголовки СМИ; место берётся из текста заголовка (`scripts/textgeo.py`: падежи, «Бурштинська ТЕС» → Бурштин, тёзки по области), `scripts/build_strikes.py` |
 | Куда летело с 2022 | вся история @kpszsu, @monitorwarr, @war_monitor, @vanek_nikolaev («ракета на Бурштин») → места через `textgeo.py`, `scripts/build_flights.py` |
 | Тревоги по областям в ночи атак | архив eTryvoga, [датасет Vadimkin](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset), сверенный с официальным |
-| Траектории за всю войну (галочка «Траектории» в режиме прилётов) | те же 4 канала с 2022, правилами без модели: `scripts/build_paths.py` → `data/paths/<год>.json` |
+| Траектории за всю войну (галочка «Траектории» в режиме прилётов) | те же 4 канала с 2022 + с 2024 @kudy_letyt, @deraketaua и областные (@vinnytsia_golovne, @vinnitsa_info, @khmelnych, @khmlv, @zt_radar, @rivne_golovne, @rivne_radar, @truexaternopil, @lviv_golovne, @truexafrankivsk, @Lutsk_monitor, @lutsk_radar, @cherkasy_golovne, @cherkasy_radar, @kyivradar; историю один раз качает `scripts/collect_regional.ps1` в `_tmp/hist_reg/`), правилами без модели: `scripts/build_paths.py` → `data/paths/<год>.json` |
 | Траектории по ночам | посты [@kpszsu](https://t.me/s/kpszsu), [@monitorwarr](https://t.me/s/monitorwarr), [@war_monitor](https://t.me/s/war_monitor), [@vanek_nikolaev](https://t.me/s/vanek_nikolaev) |
 | Сколько запущено/сбито | утренние сводки Повітряних сил |
 | Прилёты | ОВА/МВА, ДСНС, СМИ — поиск по каждой ночи |

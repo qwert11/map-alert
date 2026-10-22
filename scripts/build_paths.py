@@ -22,6 +22,26 @@ from split_nights import kyiv
 from textgeo import TextGeo, low
 
 CHANNELS = ['kpszsu', 'monitorwarr', 'war_monitor', 'vanek_nikolaev']
+# областные мониторы и новостные каналы сетей «Головне», «Труха», «Вайб», «MNR» (история с 2024, _tmp/hist_reg/):
+# область канала — контекст для сёл без названной области («Повз Піщанку на Бар» у вінницького каналу)
+REGIONAL = {
+    'vinnytsia_golovne': ['Вінницька область'], 'vinnitsa_info': ['Вінницька область'],
+    'khmelnych': ['Хмельницька область'], 'khmlv': ['Хмельницька область'], 'zt_radar': ['Житомирська область'],
+    'rivne_golovne': ['Рівненська область'], 'rivne_radar': ['Рівненська область'],
+    'truexaternopil': ['Тернопільська область'], 'lviv_golovne': ['Львівська область'],
+    'truexafrankivsk': ['Івано-Франківська область'], 'Lutsk_monitor': ['Волинська область'], 'lutsk_radar': ['Волинська область'],
+    'cherkasy_golovne': ['Черкаська область'], 'cherkasy_radar': ['Черкаська область'],
+    'kyivradar': ['Київська область', 'Київ'],
+}
+# чистые мониторы: любое село в посте — где сейчас цель («⚠️ Миронівка, Богуслав»)
+PURE_MONITORS = {'kyivradar', 'zt_radar', 'rivne_radar', 'Lutsk_monitor', 'lutsk_radar', 'cherkasy_radar'}
+NATIONAL_EXTRA = ['kudy_letyt', 'deraketaua']
+ALL_CHANNELS = CHANNELS + NATIONAL_EXTRA + list(REGIONAL)
+# у областных мониторов тип часто не назван: «Повз Лисянки на виліт», «Курсом на Шумськ» — это дрон
+MOVE = re.compile(r'повз|курс|напрям|у бік|в бік|в сторону|через|➡|→|на виліт|залітає|заходить|пролітає|летить|летять')
+FOOTER = re.compile(r'головне|надіслати|наш чат|підпис|@\w|\||t\.me/|http', re.I)
+NOT_MOVE = re.compile(r'тривог|тревог|відбій|отбой|мапу|карту|карта|osint|розвідка повідомляє|ймовірно може')
+AT_WORD = re.compile(r'повз|через|в районі|у районі|в р-ні|біля|поблизу|над |висот|пролет|пролiт|пролітає|кружля')
 OBS_CACHE = os.path.join(TMP, 'paths_obs.json')
 
 # ---------- тип цели в строке ----------
@@ -29,7 +49,7 @@ KIND_RX = [
     ('kab', re.compile(r'(?<![а-яіїєґ])(каб|каби|кабы|кар/каб)(?![а-яіїєґ])|авіабомб|авиабомб|умпк|💣')),
     ('b', re.compile(r'балісти|баллисти|☄|(?<![а-яіїєґ])бр(?![а-яіїєґ])|кинджал|кинжал|аеробаліст|аэробаллист|циркон|kn-23|кн-23|іскандер-м|искандер-м')),
     ('l', re.compile(r'бандерол|мгкр|(?<![а-яіїєґ])мкр(?![а-яіїєґ])|s-8000|с-8000|баражуюч')),
-    ('j', re.compile(r'реактив|🏍|рбпла|реактбпла')),
+    ('j', re.compile(r'реактив|🏍|рбпла|реактбпла|гера[нн]\w*[\s-]*[35](?!\d)')),
     ('m', re.compile(r'ракет|(?<![а-яіїєґ])кр(?![а-яіїєґ])|крилат|крылат|калібр|калибр|[хx]-\d|онікс|оникс|(?<![а-яіїєґ])кар(?![а-яіїєґ])|іскандер-к|искандер-к|швидкісн')),
     ('d', re.compile(r'бпла|бпла|шахед|шахід|шахид|мопед|дрон|герань|гербер|🛵|безпілотн|беспилотн')),
 ]
@@ -130,9 +150,10 @@ def role(seg_low, pos):
 
 def parse_posts():
     posts = {}
-    for path in glob.glob(os.path.join(TMP, 'hist', '*.jsonl')) + glob.glob(os.path.join(TMP, 'tg', '*.jsonl')):
-        ch = os.path.basename(path).rsplit('_', 1)[0] if os.sep + 'hist' + os.sep in path else os.path.basename(path)[:-6]
-        if ch not in CHANNELS:
+    hist = glob.glob(os.path.join(TMP, 'hist', '*.jsonl')) + glob.glob(os.path.join(TMP, 'hist_reg', '*.jsonl'))
+    for path in hist + glob.glob(os.path.join(TMP, 'tg', '*.jsonl')):
+        ch = os.path.basename(path).rsplit('_', 1)[0] if path in hist else os.path.basename(path)[:-6]
+        if ch not in ALL_CHANNELS:
             continue
         for line in open(path, encoding='utf-8'):
             if line.strip():
@@ -151,14 +172,21 @@ def parse_posts():
         start = datetime.fromisoformat(night + 'T12:00').replace(tzinfo=k.tzinfo) - timedelta(days=1)
         minute = round((k - start).total_seconds() / 60, 1)
         src = f'{ch}/{pid}'
-        post_obs = tg.oblasts_in(p['text'])
+        post_obs = tg.oblasts_in(p['text']) | set(REGIONAL.get(ch, []))
         kind_prev = None
         for si, seg in enumerate(split_segments(p['text'])):
             sl = low(seg)
+            if ch not in CHANNELS:
+                if len(seg) > 160 or FOOTER.search(seg) or NOT_MOVE.search(sl):
+                    continue  # новость, подпись канала («⚪ Рівне Головне | Наш чат»), объявление тревоги
+                if ch not in PURE_MONITORS and not (MOVE.search(sl) or AT_WORD.search(sl)):
+                    continue  # новостной канал: без «повз/курс/в районі» это не мониторинг («вибух на полігоні»)
             if SKIP_SEG.search(sl):
                 kind_prev = None
                 continue
             kind = seg_kind(sl) or kind_prev
+            if not kind and ch in REGIONAL and (MOVE.search(sl) or ch in PURE_MONITORS):
+                kind = 'd'
             kind_prev = kind
             if not kind or kind == 'kab':
                 continue
@@ -175,11 +203,13 @@ def parse_posts():
             imp = 1 if IMPACT.search(sl) else 0
             roles = []
             sr = seg.lower()  # позиции — по исходному тексту (low() выбрасывает апострофы)
+            first = min((tg.pos.get(pl[0], 0) for pl in places), default=99)
+            bare_list = (first < 3 and ch in REGIONAL) or ch in PURE_MONITORS  # «🟥 Оліївка, Троковичі, Вереси» — где сейчас
             for pl in places:
                 pos = tg.pos.get(pl[0], 0)
                 r = role(sr, pos)
                 if r is None:  # «Київ — спуск балістики», «Кременчук — ракети вздовж міста»
-                    r = 'at' if imp or pos < 3 else 'to'
+                    r = 'at' if imp or pos < 3 or bare_list else 'to'
                 roles.append((pos, r, pl))
             roles.sort(key=lambda x: x[0])
             tgt = next((pl for _, r, pl in roles if r == 'to'), None)
@@ -349,9 +379,9 @@ def write_site(tracks):
     out_dir = os.path.join(ROOT, 'data', 'paths')
     os.makedirs(out_dir, exist_ok=True)
     years = sorted({t['night'][:4] for t in tracks})
-    ch_idx = {c: i for i, c in enumerate(CHANNELS)}
+    ch_idx = {c: i for i, c in enumerate(ALL_CHANNELS)}
     index = {'years': [], 'groups': {'d': 'дроны «Шахед»', 'j': 'реактивные дроны', 'l': '«Бандероли»',
-                                     'm': 'крылатые и др. ракеты', 'b': 'баллистика'}, 'channels': CHANNELS}
+                                     'm': 'крылатые и др. ракеты', 'b': 'баллистика'}, 'channels': ALL_CHANNELS}
     for y in years:
         ts = [t for t in tracks if t['night'][:4] == y]
         names, nidx = [], {}
