@@ -496,8 +496,25 @@ function flightPopup(p) {
     <div style="margin:6px 0">Дней, когда сюда/мимо летело:<br>${yearsRow(p[4])}</div>
     <div class="muted">ракеты: ${yearsRow(p[5])}<br>дроны: ${yearsRow(p[6])}<br>КАБы: ${yearsRow(p[7])}</div>`;
 }
+// круги мельче при отдалении: на зуме ≥9 — полный размер, ниже — × 2^((zoom−9)·0.6·сжатие); сжатие — ползунок на карте
+S.shrink = 0.35;
+try { const v = parseFloat(localStorage.getItem('shrink')); if (v >= 0 && v <= 1) S.shrink = v; } catch (e) { /* без хранилища — по умолчанию */ }
+const circleK = () => Math.max(0.15, Math.min(1, 2 ** ((map.getZoom() - 9) * 0.6 * S.shrink)));
+S.circles = [];
+function resizeCircles() {
+  const k = circleK();
+  for (const [m, r] of S.circles) m.setRadius(Math.max(1.5, r * k));
+  const v = $('#shrink-v'); if (v) v.textContent = '×' + k.toFixed(2);
+}
+map.on('zoomend', () => { if (S.mode === 'war') resizeCircles(); });
+$('#shrink').value = S.shrink;
+$('#shrink').addEventListener('input', e => {
+  S.shrink = +e.target.value; resizeCircles();
+  try { localStorage.setItem('shrink', S.shrink); } catch (err) { /* не запомнится — не страшно */ }
+});
 function drawStrikes() {
-  gStr.clearLayers();
+  gStr.clearLayers(); S.circles = [];
+  const k = circleK();
   const items = [], ds = DS(), fl = ds === S.fl;
   for (const p of ds.p) {
     if (S.oblFilter && ds.oblasts[p[3]] !== S.oblFilter) continue;
@@ -508,13 +525,16 @@ function drawStrikes() {
   for (const [p, s] of items) {
     const col = YEAR_COLOR[s.last];
     const dim = S.paths.on ? 0.35 : 1; // при траекториях круги бледнее, чтобы линии было видно
-    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n)), color: col, weight: fl ? 1.6 : 1,
+    const r = Math.min(22, 2.5 + 1.5 * Math.sqrt(s.n));
+    const m = L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.max(1.5, r * k), color: col, weight: fl ? 1.6 : 1,
       opacity: 0.95 * (S.paths.on ? 0.6 : 1), fillColor: col, fillOpacity: (fl ? 0.12 : s.h ? 0.55 : 0.22) * dim })
       .bindTooltip(`<b>${esc(p[2])}</b> · ${esc(shortOb(ds.oblasts[p[3]]))}<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
       .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(fl ? flightPopup(p) : strikePopup(p)).openOn(map); })
       .addTo(gStr);
+    S.circles.push([m, r]);
   }
   S.stItems = items;
+  resizeCircles();
   if (fl) return;
   // удары, где новости назвали только район: пунктирный круг в центре района
   for (const p of S.st.r || []) {
@@ -522,11 +542,13 @@ function drawStrikes() {
     const s = ptStats(p);
     if (!s.n) continue;
     const col = YEAR_COLOR[s.last];
-    L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.min(26, 9 + 2 * Math.sqrt(s.n)), color: col, weight: 1.5,
+    const r = Math.min(26, 9 + 2 * Math.sqrt(s.n));
+    const m = L.circleMarker([p[0], p[1]], { pane: 'imp', radius: Math.max(1.5, r * k), color: col, weight: 1.5,
       dashArray: '3 4', fillColor: col, fillOpacity: 0.05 })
       .bindTooltip(`<b>${esc(p[2])}</b> · удары без точного места<br>${yearsRow(p[4])}`, { direction: 'top', opacity: 1 })
       .on('click', e => { L.DomEvent.stop(e); L.popup({ maxWidth: 340 }).setLatLng(e.latlng).setContent(strikePopup(p, true)).openOn(map); })
       .addTo(gStr);
+    S.circles.push([m, r]);
   }
 }
 function styleWar() {

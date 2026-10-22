@@ -144,6 +144,12 @@ ol.rank .nm { display: flex; align-items: center; }
 body:not([data-mode="war"]) #paths-card { display: none; }
 #paths-card label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
 #paths-card .pc-main { font-weight: 600; }
+#paths-card .pc-size { flex-direction: column; align-items: stretch; gap: 2px; padding-bottom: 6px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--line); cursor: default; }
+#paths-card .pc-row { display: flex; align-items: center; gap: 6px; }
+#paths-card .pc-row small { color: var(--muted); font-size: 11px; }
+#paths-card .pc-row input { width: 110px; accent-color: var(--accent); }
+#paths-card .pc-row b { font-weight: 500; font-size: 12px; min-width: 34px; text-align: right; color: var(--muted); }
 #paths-opts { display: flex; flex-direction: column; gap: 3px; }
 #paths-opts:empty { display: none; }
 #paths-opts .ln { display: inline-block; width: 16px; border-top: 2.5px solid; }
