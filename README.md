@@ -16,7 +16,8 @@ https://qwert11.github.io/map-alert/
 | Прилёты по населённым пунктам с 2022 | [VIINA](https://github.com/zhukovyuri/VIINA) — заголовки СМИ; место берётся из текста заголовка (`scripts/textgeo.py`: падежи, «Бурштинська ТЕС» → Бурштин, тёзки по области), `scripts/build_strikes.py` |
 | Куда летело с 2022 | вся история @kpszsu, @monitorwarr, @war_monitor, @vanek_nikolaev («ракета на Бурштин») → места через `textgeo.py`, `scripts/build_flights.py` |
 | Тревоги по областям в ночи атак | архив eTryvoga, [датасет Vadimkin](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset), сверенный с официальным |
-| Траектории | посты [@kpszsu](https://t.me/s/kpszsu), [@monitorwarr](https://t.me/s/monitorwarr), [@war_monitor](https://t.me/s/war_monitor), [@vanek_nikolaev](https://t.me/s/vanek_nikolaev) |
+| Траектории за всю войну (галочка «Траектории» в режиме прилётов) | те же 4 канала с 2022, правилами без модели: `scripts/build_paths.py` → `data/paths/<год>.json` |
+| Траектории по ночам | посты [@kpszsu](https://t.me/s/kpszsu), [@monitorwarr](https://t.me/s/monitorwarr), [@war_monitor](https://t.me/s/war_monitor), [@vanek_nikolaev](https://t.me/s/vanek_nikolaev) |
 | Сколько запущено/сбито | утренние сводки Повітряних сил |
 | Прилёты | ОВА/МВА, ДСНС, СМИ — поиск по каждой ночи |
 
@@ -43,6 +44,12 @@ Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
 7. `scripts/build_flights.py` — «куда летело» из истории каналов → `data/flights.json`.
    Историю с 2022 один раз качает `scripts/collect_range.py <канал> <с id> <до id> <файл>` (несколько процессов
    параллельно, `_tmp/hist/`), дальше хватает свежих постов из шага 1
+8. `scripts/build_paths.py --reparse` — траектории за всю войну → `data/paths/`. Из каждой строки поста берётся место,
+   где цель видели («повз Турбів», «в районі Охтирки»); «курсом на Х» — только подсказка курса, «на півночі Житомирщини» —
+   слишком грубо и в линию не идёт. Точки склеиваются в трек, только если перелёт возможен по скорости (шахед ≤200 км/ч,
+   реактивный ≤400, «Бандероль» ≤450, ракета ≤800; +15 км и 3 мин на неточность), по названному курсу (±55°) и без
+   отрезков длиннее 90/150/200 км без промежуточной точки; при двух равноценных продолжениях трек обрывается.
+   Баллистика — прямая от района пуска до цели. `scripts/check_paths.py` сверяет склейки с треками модели за 30 ночей.
 
 Границы областей — geoBoundaries ADM1 (`scripts/build_geo.py` → `data/oblasts.geojson`).
 Перезапустить извлечение одной ночи: удалить `data/extract/D.json` и запустить шаг 3 с этой датой.

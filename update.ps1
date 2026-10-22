@@ -20,6 +20,7 @@ python scripts\build_alerts.py $Since 2>&1 | ForEach-Object { Log $_ }
 python scripts\build_site.py 2>&1 | ForEach-Object { Log $_ }
 python scripts\build_strikes.py 2>&1 | ForEach-Object { Log $_ }
 python scripts\build_flights.py 2>&1 | Select-Object -First 3 | ForEach-Object { Log $_ }
+python scripts\build_paths.py --reparse 2>&1 | Select-Object -Last 6 | ForEach-Object { Log $_ }
 
 git add data index.html app.js style.css scripts README.md update.ps1 .gitignore
 git commit -q -m "Данные: обновление $(Get-Date -Format 'yyyy-MM-dd HH:mm')" 2>&1 | Out-Null
